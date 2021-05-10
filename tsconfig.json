@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "alwaysStrict": true,
+    "module": "commonjs",
+    "noImplicitAny": true,
+    "resolveJsonModule": true,
+    "target": "es2020"
+  },
+  "include": ["src/**/*", "webpack.config.ts"],
+  "exclude": ["node_modules"]
+}

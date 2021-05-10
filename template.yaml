@@ -1,0 +1,377 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+
+Description: An AWS SAM-based Terraform Module and Provider Registry
+
+Mappings:
+  Constants:
+    Code:
+      Version: '{{CODE_VERSION}}'
+
+Parameters:
+  Prefix:
+    Type: String
+    Description: A prefix to be used for all resource names - a suggestion would be a lower-case, hyphenated company name. e.g. 'my-company'
+    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$
+    ConstraintDescription: A prefix is required and can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-).
+  LambdaMemorySize:
+    Type: Number
+    Description: Memory size for all Lamdba functions (in MB)
+    Default: 128
+    MinValue: 128
+    MaxValue: 2048
+  LambdaTimeout:
+    Type: Number
+    Description: Timeout for all Lambda functions (in seconds)
+    Default: 5
+  S3BucketUploadsName:
+    Type: String
+    Description: Globally unique name of the S3 bucket to store modules and providers - default is 'prefix-terraform-registry-uploads'
+    Default: ''
+  DDBTableModulesName:
+    Type: String
+    Description: Name of the DynamoDB table to store module metadata - default is 'prefix-terraform-registry-modules'
+    Default: ''
+  DDBTableProvidersName:
+    Type: String
+    Description: Name of the DynamoDB table to store provider metadata - default is 'prefix-terraform-registry-providers'
+    Default: ''
+  S3BucketFunctionCodeName:
+    Type: String
+    Description: Globally unique name of the S3 bucket to store Lambda function code - default is 'prefix-terraform-registry-function-code'
+    Default: ''
+  S3BucketSourceCode:
+    Type: String
+    Default: s3://sam-terraform-registry
+    Description: Override the default location of the function source code - DO NOT CHANGE unless you know what you are doing!
+
+Globals:
+  Function:
+    Runtime: nodejs14.x
+    MemorySize:
+      Ref: LambdaMemorySize
+    Timeout:
+      Ref: LambdaTimeout
+    Tags:
+      Application: terraform-registry
+
+Conditions:
+  SetS3BucketFunctionCodeName:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: S3BucketFunctionCodeName
+          - ''
+  SetS3BucketUploadsName:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: S3BucketUploadsName
+          - ''
+  SetDDBTableModulesName:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: DDBTableModulesName
+          - ''
+  SetDDBTableProvidersName:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: DDBTableProvidersName
+          - ''
+  SetS3BucketSourceCode:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: S3BucketSourceCode
+          - ''
+
+Resources:
+  LambdaServiceDiscovery:
+    Type: AWS::Serverless::Function
+    DependsOn: FunctionCode
+    Properties:
+      FunctionName:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry-ServiceDiscovery'
+      CodeUri: build/serviceDiscovery/serviceDiscovery
+      Handler: serviceDiscovery.handler
+      Description: Provides Terraform Remote Service Discovery
+      Events:
+        ServiceDiscovery:
+          Type: Api
+          Properties:
+            Path: /.well-known/terraform.json
+            Method: get
+
+  LambdaCreatePreSignedURL:
+    Type: AWS::Serverless::Function
+    DependsOn: FunctionCode
+    Properties:
+      FunctionName:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry-file-CreatePreSignedURL'
+      CodeUri: build/file/createPreSignedURL
+      Handler: createPreSignedURL.handler
+      Description: Generates an S3 pre-signed URL for uploading modules or providers
+      Events:
+        CreatePreSignedURL:
+          Type: Api
+          Properties:
+            Path: /pre-sign
+            Method: post
+      Environment:
+        Variables:
+          S3_BUCKET_NAME:
+            Fn::If:
+              - SetS3BucketUploadsName
+              - Ref: S3BucketUploadsName
+              - Fn::Join:
+                  - '-'
+                  - - Ref: Prefix
+                    - 'terraform-registry-uploads'
+
+  S3BucketUploads:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        Fn::If:
+          - SetS3BucketUploadsName
+          - Ref: S3BucketUploadsName
+          - Fn::Join:
+              - '-'
+              - - Ref: Prefix
+                - 'terraform-registry-uploads'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'aws:kms'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Application
+          Value: terraform-registry
+
+  DDBTableModules:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName:
+        Fn::If:
+          - SetDDBTableModulesName
+          - Ref: DDBTableModulesName
+          - Fn::Join:
+              - '-'
+              - - Ref: Prefix
+                - 'terraform-registry-modules'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: version
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+        - AttributeName: version
+          KeyType: RANGE
+      Tags:
+        - Key: Application
+          Value: terraform-registry
+
+  DDBTableProviders:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName:
+        Fn::If:
+          - SetDDBTableProvidersName
+          - Ref: DDBTableProvidersName
+          - Fn::Join:
+              - '-'
+              - - Ref: Prefix
+                - 'terraform-registry-providers'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: version
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+        - AttributeName: version
+          KeyType: RANGE
+      Tags:
+        - Key: Application
+          Value: terraform-registry
+
+  S3BucketFunctionCode:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        Fn::If:
+          - SetS3BucketFunctionCodeName
+          - Ref: S3BucketFunctionCodeName
+          - Fn::Join:
+              - '-'
+              - - Ref: Prefix
+                - 'terraform-registry-function-code'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'aws:kms'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Application
+          Value: terraform-registry
+
+  CustomFunctionCode:
+    Type: Custom::FunctionCode
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: LambdaFunctionCodeCopier.Arn
+      DestBucket:
+        Ref: S3BucketFunctionCode
+      SourceBucket:
+        Ref: S3BucketSourceCode
+
+  LambdaFunctionCodeCopier:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry-FunctionCodeCopier'
+      Handler: index.handler
+      Description: Copies the Terraform Module Registry function code to the destination S3 bucket
+      Runtime: python3.8
+      Timeout: 300
+      InlineCode: |
+        import json
+        import logging
+        import threading
+        import boto3
+        import urllib.request
+        import os
+        def send_cfn_resp(event, context, response_status):
+            resp_body = json.dumps({
+                'Status': response_status,
+                'Reason': f'See reasons in CloudWatch Logs - Group: {context.log_group_name}, Stream: {context.log_stream_name}',
+                'PhysicalResourceId': context.log_stream_name,
+                'StackId': event['StackId'],
+                'RequestId': event['RequestId'],
+                'LogicalResourceId': event['LogicalResourceId'],
+                'Data': {}
+            }).encode('utf-8')
+            req = urllib.request.Request(url=event['ResponseURL'], data=resp_body, method='PUT')
+            with urllib.request.urlopen(req) as f:
+                logging.info(f'Sent response to CloudFormation: {f.status}, {f.reason}')
+        def delete_code(bucket):
+            s3_resource = boto3.resource('s3')
+            bucket = s3_resource.Bucket(bucket)
+            bucket.objects.all().delete()
+        def copy_code(source_bucket, dest_bucket):
+            s3_client = boto3.client('s3')
+            s3_resource = boto3.resource('s3')
+            s3_prelude = "s3://"
+            if source_bucket.startswith(s3_prelude):
+                source_bucket_name = source_bucket[len(s3_prelude):]
+                source_bucket_resource = s3_resource.Bucket(source_bucket_name)
+                directory = os.environ.get("CODE_VERSION")
+                for object in source_bucket_resource.objects.filter(Prefix=f"{directory}/"):
+                    logging.info(object)
+                    response = s3_client.get_object(Bucket=source_bucket_name, Key=object.key)
+                    data = response["Body"]
+                    s3_client.upload_fileobj(data, dest_bucket, object.key)
+            else:
+                logging.error("Invalid source S3 bucket name provided")
+                raise Exception("Invalid source S3 bucket name provided")
+        def timeout(event, context):
+            logging.error('Execution is about to time out, sending failure response to CloudFormation')
+            send_cfn_resp(event, context, 'FAILED')
+        def handler(event, context):
+            # Make sure we send a failure to CloudFormation if the function is going to timeout
+            timer = threading.Timer((context.get_remaining_time_in_millis() / 1000.00) - 0.5, timeout, args=[event, context])
+            timer.start()
+            logging.info(f'Received event: {json.dumps(event)}')
+            try:
+                source_bucket = event['ResourceProperties']['SourceBucket']
+                dest_bucket = event['ResourceProperties']['DestBucket']
+                if event['RequestType'] == 'Delete':
+                    delete_code(dest_bucket)
+                else:
+                    copy_code(source_bucket, dest_bucket)
+            except Exception as e:
+                logging.exception(f'Exception when copying code from {source_bucket} to s3://{dest_bucket}')
+                send_cfn_resp(event, context, 'FAILED')
+            else:
+                send_cfn_resp(event, context, 'SUCCESS')
+            finally:
+                timer.cancel()
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:DeleteObject
+              Resource:
+                - Fn::Join:
+                    - '/'
+                    - - Fn::GetAtt: S3BucketFunctionCode.Arn
+                      - '*'
+            - Effect: Allow
+              Action:
+                - s3:ListBucket
+              Resource:
+                - Fn::GetAtt: S3BucketFunctionCode.Arn
+                - Fn::Join:
+                    - ''
+                    - - 'arn:aws:s3:::'
+                      - !Select [1, !Split ['s3://', !Ref S3BucketSourceCode]]
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource:
+                - Fn::Join:
+                    - ''
+                    - - 'arn:aws:s3:::'
+                      - !Select [1, !Split ['s3://', !Ref S3BucketSourceCode]]
+                      - '/*'
+      Environment:
+        Variables:
+          CODE_VERSION: !FindInMap [Constants, Code, Version]
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Required
+        Parameters:
+          - Prefix
+      - Label:
+          default: Lambda Function (Optional)
+        Parameters:
+          - LambdaMemorySize
+          - LambdaTimeout
+      - Label:
+          default: Resources (Optional)
+        Parameters:
+          - S3BucketUploadsName
+          - DDBTableModulesName
+          - DDBTableProvidersName
+      - Label:
+          default: Advanced (Optional)
+        Parameters:
+          - S3BucketFunctionCodeName
+          - S3BucketSourceCode
+    ParameterLabels:
+      Prefix:
+        default: 'Prefix *'

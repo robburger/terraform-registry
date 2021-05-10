@@ -1,0 +1,41 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`createPreSignedURL handler should return a pre-signed URL 1`] = `
+Object {
+  "body": "{\\"url\\":\\"https://s3.eu-west-1.amazonaws.com/\\"}",
+  "headers": Object {
+    "content-type": "application/json",
+  },
+  "statusCode": 200,
+}
+`;
+
+exports[`createPreSignedURL handler should return an error when invalid body data 1`] = `
+Object {
+  "body": "{\\"error\\":\\"JSON payload invalid. Ensure you provide an object with 'namespace', 'name', 'provider' and 'version' parameters\\"}",
+  "headers": Object {
+    "content-type": "application/json",
+  },
+  "statusCode": 400,
+}
+`;
+
+exports[`createPreSignedURL handler should return an error when missing body data 1`] = `
+Object {
+  "body": "{\\"error\\":\\"JSON payload invalid. Ensure you provide an object with 'namespace', 'name', 'provider' and 'version' parameters\\"}",
+  "headers": Object {
+    "content-type": "application/json",
+  },
+  "statusCode": 400,
+}
+`;
+
+exports[`createPreSignedURL handler should return an error when missing/invalid "type" querystring 1`] = `
+Object {
+  "body": "{\\"error\\":\\"You need to specify a 'type' for this request. e.g. /pre-sign?type=module\\"}",
+  "headers": Object {
+    "content-type": "application/json",
+  },
+  "statusCode": 400,
+}
+`;

@@ -1,0 +1,5 @@
+{
+  "createPreSignedURL": {
+    "S3_BUCKET_NAME": "localbucket"
+  }
+}

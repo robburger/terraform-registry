@@ -1,0 +1,64 @@
+{
+  "body": null,
+  "headers": {
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Host": "127.0.0.1:3000",
+    "User-Agent": "PostmanRuntime/7.26.8",
+    "X-Forwarded-Port": "3000",
+    "X-Forwarded-Proto": "http"
+  },
+  "httpMethod": "GET",
+  "isBase64Encoded": false,
+  "multiValueHeaders": {
+    "Accept": ["*/*"],
+    "Accept-Encoding": ["gzip, deflate, br"],
+    "Connection": ["keep-alive"],
+    "Host": ["127.0.0.1:3000"],
+    "User-Agent": ["PostmanRuntime/7.26.8"],
+    "X-Forwarded-Port": ["3000"],
+    "X-Forwarded-Proto": ["http"]
+  },
+  "multiValueQueryStringParameters": {
+    "type": ["module"]
+  },
+  "path": "/pre-sign",
+  "pathParameters": null,
+  "queryStringParameters": { "type": "module" },
+  "requestContext": {
+    "accountId": "123456789012",
+    "apiId": "1234567890",
+    "authorizer": null,
+    "domainName": "127.0.0.1:3000",
+    "extendedRequestId": null,
+    "httpMethod": "GET",
+    "identity": {
+      "accessKey": null,
+      "accountId": null,
+      "apiKey": null,
+      "apiKeyId": null,
+      "caller": null,
+      "cognitoAuthenticationProvider": null,
+      "cognitoAuthenticationType": null,
+      "cognitoIdentityId": null,
+      "cognitoIdentityPoolId": null,
+      "principalOrgId": null,
+      "sourceIp": "127.0.0.1",
+      "user": null,
+      "userAgent": "PostmanRuntime/7.26.8",
+      "userArn": null
+    },
+    "path": "/pre-sign",
+    "protocol": "HTTP/1.1",
+    "requestId": "abcdef-0123-0123-0123-abcdefabcdef",
+    "requestTime": "01/Jan/2021:00:00:00 +0000",
+    "requestTimeEpoch": 1609459200,
+    "resourceId": "123456",
+    "resourcePath": "/pre-sign",
+    "stage": "Prod"
+  },
+  "resource": "/pre-sign",
+  "stageVariables": null,
+  "version": "1.0"
+}
