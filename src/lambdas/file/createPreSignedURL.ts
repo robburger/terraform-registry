@@ -8,8 +8,6 @@ const logger = new Logger()
 const s3 = new AWS.S3({ region: process.env.AWS_REGION, signatureVersion: 'v4' })
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  logger.info(`Generating pre-signed URL`)
-
   if (event.queryStringParameters?.type === 'module') {
     const params: CreatePreSignedURLDTO = JSON.parse(event.body)
     if (isValidParams(params)) {
@@ -27,7 +25,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         })
       } catch (e) {
         logger.error(`Failed to generate pre-signed URL: ${e}`)
-        return Message.error(`Failed to generate pre-signed URL\n${e}`)
+        return Message.error(`Failed to generate pre-signed URL: ${e}`)
       }
     } else {
       logger.error(`JSON payload invalid: ${JSON.stringify(params)}`)
@@ -37,7 +35,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
   } else {
     logger.error(`Missing 'type' from queryStringParameters`)
-    return Message.bad(`You need to specify a 'type' for this request. e.g. /pre-sign?type=module`)
+    return Message.bad(
+      `You need to specify a 'type' for this request. e.g. /pre-sign?type=module or /pre-sign?type=provider`,
+    )
   }
 }
 

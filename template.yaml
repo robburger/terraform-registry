@@ -6,7 +6,7 @@ Description: An AWS SAM-based Terraform Module and Provider Registry
 Mappings:
   Constants:
     Code:
-      Version: '{{CODE_VERSION}}'
+      Version: '<CODE_VERSION_PLACEHOLDER>'
 
 Parameters:
   Prefix:

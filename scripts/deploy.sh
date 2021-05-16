@@ -20,7 +20,7 @@ SUFFIX=$(sed -r 's|latest(.*)\.yaml|\1|' <<< "$(ls ./build/latest*)")
 sed -i -r "s| s3://sam-terraform-registry$SUFFIX/(.*)|\n        Bucket:\n          Ref: S3BucketFunctionCode\n        Key: \1|g" "./build/latest$SUFFIX.yaml"
 
 # Update the 'Version' constant to match package.json
-sed -i -r "s|\{\{CODE_VERSION\}\}|$VERSION|g" "./build/latest$SUFFIX.yaml"
+sed -i -r "s|<CODE_VERSION_PLACEHOLDER>|$VERSION|g" "./build/latest$SUFFIX.yaml"
 
 # Upload the modified CloudFomation template to version-specific key and overwite latest.yaml
 aws s3 cp "./build/latest$SUFFIX.yaml" "s3://sam-terraform-registry$SUFFIX/latest.yaml" --region eu-west-1
