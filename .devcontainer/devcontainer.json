@@ -32,5 +32,5 @@
   //"remoteUser": "node",
 
   // Additional volume mounts
-  "mounts": ["source=${localEnv:HOME}/.aws,target=/root/.aws,type=bind,consistency=cached"]
+  "mounts": ["source=${localEnv:HOME}${localEnv:USERPROFILE}/.aws,target=/root/.aws,type=bind,consistency=cached"]
 }
