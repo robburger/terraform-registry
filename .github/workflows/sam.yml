@@ -55,7 +55,7 @@ jobs:
 
       - name: Deploy - Dev
         #if: github.ref == 'refs/heads/main'
-        if: github.event_type == 'pull_request'
+        if: github.ref != 'refs/heads/main'
         run: yarn deploy --config-env dev
 
       - name: Deploy - Prod
