@@ -1,7 +1,7 @@
 import { APIGatewayProxyEvent } from 'aws-lambda'
 import { handler } from './serviceDiscovery'
 
-import * as data from '../../../test/events/serviceDiscovery/ServiceDiscovery.json'
+import * as data from '../../../test/events/serviceDiscovery/serviceDiscovery/ServiceDiscovery.json'
 
 const mockEvent: APIGatewayProxyEvent = data
 
