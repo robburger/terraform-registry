@@ -25,7 +25,7 @@ describe('createPreSignedURL handler', () => {
     const body = JSON.parse(result.body)
     expect(body).toHaveProperty('url')
     expect(body.url).toMatch(
-      /https:\/\/localbucket\.s3\.amazonaws\.com\/modules\/test\/test\/test\/test\/module\.zip\?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=local%2F\d{8}%2F\w{2}-\w*-\d%2Fs3%2Faws4_request&X-Amz-Date=\d{8}T\d{6}Z&X-Amz-Expires=\d*&X-Amz-Signature=.{64}&X-Amz-SignedHeaders=host%3Bx-amz-tagging&x-amz-tagging=tags%3Dtrue/,
+      /localbucket\.s3\..*amazonaws\.com\/modules\/test\/test\/test\/test\/module\.zip\?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=.*%2F\d{8}%2F\w{2}-\w*-\d%2Fs3%2Faws4_request&X-Amz-Date=\d{8}T\d{6}Z&X-Amz-Expires=\d*&X-Amz-Signature=.{64}&X-Amz-SignedHeaders=host%3Bx-amz-tagging&x-amz-tagging=tags%3Dtrue/,
     )
   })
 

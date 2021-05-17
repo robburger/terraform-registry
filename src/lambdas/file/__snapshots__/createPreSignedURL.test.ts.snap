@@ -22,7 +22,7 @@ Object {
 
 exports[`createPreSignedURL handler should return an error when missing/invalid "type" querystring 1`] = `
 Object {
-  "body": "{\\"error\\":\\"You need to specify a 'type' for this request. e.g. /pre-sign?type=module\\"}",
+  "body": "{\\"error\\":\\"You need to specify a 'type' for this request. e.g. /pre-sign?type=module or /pre-sign?type=provider\\"}",
   "headers": Object {
     "content-type": "application/json",
   },
