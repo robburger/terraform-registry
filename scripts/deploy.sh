@@ -14,7 +14,7 @@ VERSION=$(node --eval="process.stdout.write(require('./package.json').version)")
 sam package --s3-prefix "$VERSION" "$@"
 
 # Get the config suffix, if any
-SUFFIX=$(sed -r 's|latest(.*)\.yaml|\1|' <<< "$(ls ./build/latest*)")
+SUFFIX=$(sed -r 's|\.\/build\/latest(.*)\.yaml|\1|' <<< "$(ls ./build/latest*)")
 
 # Replace the SAM-generated bucket name with the template reference
 sed -i -r "s| s3://sam-terraform-registry$SUFFIX/(.*)|\n        Bucket:\n          Ref: S3BucketFunctionCode\n        Key: \1|g" "./build/latest$SUFFIX.yaml"
