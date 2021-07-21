@@ -44,6 +44,27 @@ Parameters:
     Type: String
     Default: s3://sam-terraform-registry
     Description: Override the default location of the function source code - DO NOT CHANGE unless you know what you are doing!
+  CustomDomainName:
+    Type: String
+    Description: A fully-qualified DNS domain name to use for the API Gateway. You must either set CreateSSLCertificate to 'true' or enter an ARN for a valid Amazon Certificate Manager SSL certificate in CertificateArn below.
+    Default: ''
+  CreateSSLCertificate:
+    Type: String
+    Description: Set to 'true' to automatically create an SSL certificate. If this parameter is 'true', the required validation records will be created in the Hosted Zone selected in Route53ZoneId.
+    Default: false
+    AllowedValues:
+      - true
+      - false
+  Route53ZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: The Route 53 Hosted Zone in which to create the custom domain name. The Hosted Zone must be managed in this AWS Account.
+    Default: ''
+    AllowedPattern: .*
+    ConstraintDescription: You must select a Route 53 Hosted Zone in this account.
+  CertificateArn:
+    Type: String
+    Description: The ARN of an existing Amazon Certificate Manager SSL certificate. Leave this blank if CreateSSLCertificate is 'true'.
+    Default: ''
 
 Globals:
   Function:
@@ -52,8 +73,6 @@ Globals:
       Ref: LambdaMemorySize
     Timeout:
       Ref: LambdaTimeout
-    Tags:
-      Application: terraform-registry
 
 Conditions:
   SetS3BucketFunctionCodeName:
@@ -81,11 +100,66 @@ Conditions:
       - Fn::Equals:
           - Ref: S3BucketSourceCode
           - ''
+  SetCreateSSLCertificate:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: CreateSSLCertificate
+          - false
+
+Rules:
+  MustSetSSL:
+    Assertions:
+      - Assert:
+          Fn::Or:
+            - Fn::Not:
+                - Fn::Equals:
+                    - Ref: CreateSSLCertificate
+                    - 'false'
+            - Fn::Not:
+                - Fn::Equals:
+                    - Ref: CertificateArn
+                    - ''
+        AssertDescription: CreateSSLCertificate must be true, or CertificateArn must be set
 
 Resources:
+  RestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry'
+      Description: Processes API requests for the terraform-registry
+      StageName: Prod
+      Domain:
+        DomainName:
+          Ref: CustomDomainName
+        CertificateArn:
+          Fn::If:
+            - SetCreateSSLCertificate
+            - Ref: SSLCertificate
+            - Ref: CertificateArn
+        Route53:
+          HostedZoneId:
+            Ref: Route53ZoneId
+
+  SSLCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Condition: SetCreateSSLCertificate
+    Properties:
+      DomainName:
+        Ref: CustomDomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName:
+            Ref: CustomDomainName
+          HostedZoneId:
+            Ref: Route53ZoneId
+
   LambdaServiceDiscovery:
     Type: AWS::Serverless::Function
-    DependsOn: FunctionCode
+    DependsOn: CustomFunctionCode
     Properties:
       FunctionName:
         Fn::Join:
@@ -99,12 +173,14 @@ Resources:
         ServiceDiscovery:
           Type: Api
           Properties:
+            RestApiId:
+              Ref: RestApi
             Path: /.well-known/terraform.json
             Method: get
 
   LambdaCreatePreSignedURL:
     Type: AWS::Serverless::Function
-    DependsOn: FunctionCode
+    DependsOn: CustomFunctionCode
     Properties:
       FunctionName:
         Fn::Join:
@@ -118,6 +194,8 @@ Resources:
         CreatePreSignedURL:
           Type: Api
           Properties:
+            RestApiId:
+              Ref: RestApi
             Path: /pre-sign
             Method: post
       Environment:
@@ -151,9 +229,6 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
-      Tags:
-        - Key: Application
-          Value: terraform-registry
 
   DDBTableModules:
     Type: AWS::DynamoDB::Table
@@ -177,9 +252,6 @@ Resources:
           KeyType: HASH
         - AttributeName: version
           KeyType: RANGE
-      Tags:
-        - Key: Application
-          Value: terraform-registry
 
   DDBTableProviders:
     Type: AWS::DynamoDB::Table
@@ -203,9 +275,6 @@ Resources:
           KeyType: HASH
         - AttributeName: version
           KeyType: RANGE
-      Tags:
-        - Key: Application
-          Value: terraform-registry
 
   S3BucketFunctionCode:
     Type: AWS::S3::Bucket
@@ -227,9 +296,6 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
-      Tags:
-        - Key: Application
-          Value: terraform-registry
 
   CustomFunctionCode:
     Type: Custom::FunctionCode
@@ -356,6 +422,13 @@ Metadata:
           default: Required
         Parameters:
           - Prefix
+          - CustomDomainName
+          - Route53ZoneId
+      - Label:
+          default: API Gateway (One Option Required)
+        Parameters:
+          - CreateSSLCertificate
+          - CertificateArn
       - Label:
           default: Lambda Function (Optional)
         Parameters:
@@ -375,3 +448,7 @@ Metadata:
     ParameterLabels:
       Prefix:
         default: 'Prefix *'
+      CustomDomainName:
+        default: 'CustomDomainName *'
+      Route53ZoneId:
+        default: 'Route53ZoneId *'
