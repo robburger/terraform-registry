@@ -163,6 +163,8 @@ Resources:
     Properties:
       ServiceToken:
         Fn::GetAtt: LambdaFunctionCodeCopier.Arn
+      CodeVersion:
+        Fn::FindInMap: [Constants, Code, Version]
       DestBucket:
         Ref: S3BucketFunctionCode
       SourceBucket:
@@ -308,9 +310,6 @@ Resources:
       Timeout: 300
       CodeSigningConfigArn:
         Ref: CodeSigning
-      Environment:
-        Variables:
-          CODE_VERSION: !FindInMap [Constants, Code, Version]
       InlineCode: |
         import json
         import logging
@@ -335,15 +334,14 @@ Resources:
             s3_resource = boto3.resource('s3')
             bucket = s3_resource.Bucket(bucket)
             bucket.objects.all().delete()
-        def copy_code(source_bucket, dest_bucket):
+        def copy_code(code_version, source_bucket, dest_bucket):
             s3_client = boto3.client('s3')
             s3_resource = boto3.resource('s3')
             s3_prelude = 's3://'
             if source_bucket.startswith(s3_prelude):
                 source_bucket_name = source_bucket[len(s3_prelude):]
                 source_bucket_resource = s3_resource.Bucket(source_bucket_name)
-                directory = os.environ.get('CODE_VERSION')
-                for object in source_bucket_resource.objects.filter(Prefix=f'{directory}/'):
+                for object in source_bucket_resource.objects.filter(Prefix=f'{code_version}/'):
                     logging.info(object)
                     response = s3_client.get_object(Bucket=source_bucket_name, Key=object.key)
                     data = response['Body']
@@ -360,12 +358,13 @@ Resources:
             timer.start()
             logging.info(f'Received event: {json.dumps(event)}')
             try:
+                code_version = event['ResourceProperties']['CodeVersion']
                 source_bucket = event['ResourceProperties']['SourceBucket']
                 dest_bucket = event['ResourceProperties']['DestBucket']
                 if event['RequestType'] == 'Delete':
                     delete_code(dest_bucket)
                 else:
-                    copy_code(source_bucket, dest_bucket)
+                    copy_code(code_version, source_bucket, dest_bucket)
             except Exception as e:
                 logging.exception(f'Exception when copying code from {source_bucket} to s3://{dest_bucket}')
                 send_cfn_resp(event, context, 'FAILED')
