@@ -158,6 +158,27 @@ Resources:
           HostedZoneId:
             Ref: Route53ZoneId
 
+  IAMRoleLambdaTerraformRegistry:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry-TerraformRegistry'
+      Description: Provides the Terraform Registry Lambdas with permissions to execute actions
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
   LambdaServiceDiscovery:
     Type: AWS::Serverless::Function
     DependsOn: CustomFunctionCode
@@ -170,6 +191,8 @@ Resources:
       CodeUri: build/serviceDiscovery/serviceDiscovery
       Handler: serviceDiscovery.handler
       Description: Provides Terraform Remote Service Discovery
+      Role:
+        Fn::GetAtt: IAMRoleLambdaTerraformRegistry.Arn
       Events:
         ServiceDiscovery:
           Type: Api
@@ -191,6 +214,8 @@ Resources:
       CodeUri: build/file/createPreSignedURL
       Handler: createPreSignedURL.handler
       Description: Generates an S3 pre-signed URL for uploading modules or providers
+      Role:
+        Fn::GetAtt: IAMRoleLambdaTerraformRegistry.Arn
       Events:
         CreatePreSignedURL:
           Type: Api
@@ -308,6 +333,59 @@ Resources:
       SourceBucket:
         Ref: S3BucketSourceCode
 
+  IAMRoleLambdaFunctionCodeCopier:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry-FunctionCodeCopier'
+      Description: Provides the FunctionCodeCopier Lambda with permissions to execute actions
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaFunctionCodeCopierRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - Fn::Join:
+                      - '/'
+                      - - Fn::GetAtt: S3BucketFunctionCode.Arn
+                        - '*'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - Fn::GetAtt: S3BucketFunctionCode.Arn
+                  - Fn::Join:
+                      - ''
+                      - - 'arn:aws:s3:::'
+                        - !Select [1, !Split ['s3://', !Ref S3BucketSourceCode]]
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - Fn::Join:
+                      - ''
+                      - - 'arn:aws:s3:::'
+                        - !Select [1, !Split ['s3://', !Ref S3BucketSourceCode]]
+                        - '/*'
+
   LambdaFunctionCodeCopier:
     Type: AWS::Serverless::Function
     Properties:
@@ -318,8 +396,13 @@ Resources:
             - 'terraform-registry-FunctionCodeCopier'
       Handler: index.handler
       Description: Copies the Terraform Module Registry function code to the destination S3 bucket
+      Role:
+        Fn::GetAtt: IAMRoleLambdaFunctionCodeCopier.Arn
       Runtime: python3.8
       Timeout: 300
+      Environment:
+        Variables:
+          CODE_VERSION: !FindInMap [Constants, Code, Version]
       InlineCode: |
         import json
         import logging
@@ -382,39 +465,6 @@ Resources:
                 send_cfn_resp(event, context, 'SUCCESS')
             finally:
                 timer.cancel()
-      Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - s3:PutObject
-                - s3:DeleteObject
-              Resource:
-                - Fn::Join:
-                    - '/'
-                    - - Fn::GetAtt: S3BucketFunctionCode.Arn
-                      - '*'
-            - Effect: Allow
-              Action:
-                - s3:ListBucket
-              Resource:
-                - Fn::GetAtt: S3BucketFunctionCode.Arn
-                - Fn::Join:
-                    - ''
-                    - - 'arn:aws:s3:::'
-                      - !Select [1, !Split ['s3://', !Ref S3BucketSourceCode]]
-            - Effect: Allow
-              Action:
-                - s3:GetObject
-              Resource:
-                - Fn::Join:
-                    - ''
-                    - - 'arn:aws:s3:::'
-                      - !Select [1, !Split ['s3://', !Ref S3BucketSourceCode]]
-                      - '/*'
-      Environment:
-        Variables:
-          CODE_VERSION: !FindInMap [Constants, Code, Version]
 
 Metadata:
   AWS::CloudFormation::Interface:
