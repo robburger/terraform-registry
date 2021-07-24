@@ -11,6 +11,8 @@ Description: An AWS SAM-based Terraform Module and Provider Registry
 ##########
 Mappings:
   Constants:
+    Build:
+      Date: '<BUILD_DATE_PLACEHOLDER>'
     Code:
       Version: '<CODE_VERSION_PLACEHOLDER>'
     CodeSigning:
@@ -163,6 +165,8 @@ Resources:
     Properties:
       ServiceToken:
         Fn::GetAtt: LambdaFunctionCodeCopier.Arn
+      BuildDate:
+        Fn::FindInMap: [Constants, Build, Date]
       CodeVersion:
         Fn::FindInMap: [Constants, Code, Version]
       DestBucket:
