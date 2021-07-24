@@ -5,6 +5,7 @@ set -e
 /usr/local/bin/dockerd \
   --host=unix:///var/run/docker.sock \
   --host=tcp://127.0.0.1:2375 \
+  &
 
 # Wait until 'docker info' exits successfully, or timeout after 30 seconds
 tries=0
