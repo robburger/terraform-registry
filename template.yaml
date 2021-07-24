@@ -338,19 +338,19 @@ Resources:
         def copy_code(source_bucket, dest_bucket):
             s3_client = boto3.client('s3')
             s3_resource = boto3.resource('s3')
-            s3_prelude = "s3://"
+            s3_prelude = 's3://'
             if source_bucket.startswith(s3_prelude):
                 source_bucket_name = source_bucket[len(s3_prelude):]
                 source_bucket_resource = s3_resource.Bucket(source_bucket_name)
-                directory = os.environ.get("CODE_VERSION")
-                for object in source_bucket_resource.objects.filter(Prefix=f"{directory}/"):
+                directory = os.environ.get('CODE_VERSION')
+                for object in source_bucket_resource.objects.filter(Prefix=f'{directory}/'):
                     logging.info(object)
                     response = s3_client.get_object(Bucket=source_bucket_name, Key=object.key)
-                    data = response["Body"]
+                    data = response['Body']
                     s3_client.upload_fileobj(data, dest_bucket, object.key)
             else:
-                logging.error("Invalid source S3 bucket name provided")
-                raise Exception("Invalid source S3 bucket name provided")
+                logging.error('Invalid source S3 bucket name provided')
+                raise Exception('Invalid source S3 bucket name provided')
         def timeout(event, context):
             logging.error('Execution is about to time out, sending failure response to CloudFormation')
             send_cfn_resp(event, context, 'FAILED')
