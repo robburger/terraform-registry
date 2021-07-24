@@ -143,6 +143,7 @@ Resources:
         Route53:
           HostedZoneId:
             Ref: Route53ZoneId
+        SecurityPolicy: TLS_1_2
 
   SSLCertificate:
     Type: AWS::CertificateManager::Certificate
