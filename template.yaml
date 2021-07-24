@@ -315,6 +315,9 @@ Resources:
         import boto3
         import urllib.request
         import os
+
+        logging.getLogger().setLevel(logging.INFO)
+
         def send_cfn_resp(event, context, response_status):
             resp_body = json.dumps({
                 'Status': response_status,
@@ -326,30 +329,39 @@ Resources:
                 'Data': {}
             }).encode('utf-8')
             req = urllib.request.Request(url=event['ResponseURL'], data=resp_body, method='PUT')
-            with urllib.request.urlopen(req) as f:
-                logging.info(f'Sent response to CloudFormation: {f.status}, {f.reason}')
-        def delete_code(bucket):
+            with urllib.request.urlopen(req) as res:
+                logging.info(f'Sent {response_status} response to CloudFormation: {res.status}, {res.reason}')
+
+        def delete_code(code_version, dest_bucket):
+            logging.info(f'Deleting code from s3://{dest_bucket}')
             s3_resource = boto3.resource('s3')
-            bucket = s3_resource.Bucket(bucket)
-            bucket.objects.all().delete()
+            dest_bucket_resource = s3_resource.Bucket(dest_bucket)
+            objects_to_delete = []
+            for object in dest_bucket_resource.objects.filter(Prefix=f'{code_version}/signed_'):
+                logging.info(f'Deleting s3://{dest_bucket}/{object.key}')
+                objects_to_delete.append({'Key': object.key})
+            dest_bucket_resource.delete_objects(Delete={'Objects': objects_to_delete})
+
         def copy_code(code_version, source_bucket, dest_bucket):
+            logging.info(f'Copying code from {source_bucket} to s3://{dest_bucket}')
             s3_client = boto3.client('s3')
             s3_resource = boto3.resource('s3')
             s3_prelude = 's3://'
             if source_bucket.startswith(s3_prelude):
                 source_bucket_name = source_bucket[len(s3_prelude):]
                 source_bucket_resource = s3_resource.Bucket(source_bucket_name)
-                for object in source_bucket_resource.objects.filter(Prefix=f'{code_version}/'):
-                    logging.info(object)
+                for object in source_bucket_resource.objects.filter(Prefix=f'{code_version}/signed_'):
+                    logging.info(f'Copying s3://{source_bucket_name}/{object.key} to s3://{dest_bucket}/{object.key}')
                     response = s3_client.get_object(Bucket=source_bucket_name, Key=object.key)
                     data = response['Body']
                     s3_client.upload_fileobj(data, dest_bucket, object.key)
             else:
-                logging.error('Invalid source S3 bucket name provided')
-                raise Exception('Invalid source S3 bucket name provided')
+                raise Exception('Full S3 URL must be provided in the form s3://bucket-name')
+
         def timeout(event, context):
             logging.error('Execution is about to time out, sending failure response to CloudFormation')
             send_cfn_resp(event, context, 'FAILED')
+
         def handler(event, context):
             # Make sure we send a failure to CloudFormation if the function is going to timeout
             timer = threading.Timer((context.get_remaining_time_in_millis() / 1000.00) - 0.5, timeout, args=[event, context])
@@ -359,17 +371,24 @@ Resources:
                 code_version = event['ResourceProperties']['CodeVersion']
                 source_bucket = event['ResourceProperties']['SourceBucket']
                 dest_bucket = event['ResourceProperties']['DestBucket']
+            except KeyError as e:
+                logging.exception(f'Missing a required property: {e}')
+                send_cfn_resp(event, context, 'FAILED')
+                timer.cancel()
+                return None
+            try:
                 if event['RequestType'] == 'Delete':
-                    delete_code(dest_bucket)
+                    delete_code(code_version, dest_bucket)
                 else:
                     copy_code(code_version, source_bucket, dest_bucket)
             except Exception as e:
-                logging.exception(f'Exception when copying code from {source_bucket} to s3://{dest_bucket}')
+                logging.exception(f'Exception when copying code from {source_bucket} to s3://{dest_bucket}: {e}')
                 send_cfn_resp(event, context, 'FAILED')
             else:
                 send_cfn_resp(event, context, 'SUCCESS')
             finally:
                 timer.cancel()
+                return None
 
   ## File
   LambdaCreatePreSignedURL:
