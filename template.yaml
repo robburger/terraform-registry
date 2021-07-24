@@ -13,6 +13,8 @@ Mappings:
   Constants:
     Code:
       Version: '<CODE_VERSION_PLACEHOLDER>'
+    CodeSigning:
+      VersionProfiledArn: 'arn:aws:signer:eu-west-1:171947101422:/signing-profiles/TerraformRegistryLambdaSigner_Ireland_2021/cCJXtqD01u'
 
 ############
 # Parameters
@@ -144,6 +146,17 @@ Rules:
 # Resources
 ###########
 Resources:
+  # Code Signing
+  CodeSigning:
+    Type: AWS::Lambda::CodeSigningConfig
+    Properties:
+      Description: Code Signing for Terraform Registry Lambdas
+      AllowedPublishers:
+        SigningProfileVersionArns:
+          - Fn::FindInMap: [Constants, CodeSigning, VersionProfiledArn]
+      CodeSigningPolicies:
+        UntrustedArtifactOnDeployment: Enforce
+
   # Custom Resources
   CustomFunctionCode:
     Type: Custom::FunctionCode
@@ -293,6 +306,8 @@ Resources:
         Fn::GetAtt: IAMRoleLambdaFunctionCodeCopier.Arn
       Runtime: python3.8
       Timeout: 300
+      CodeSigningConfigArn:
+        Ref: CodeSigning
       Environment:
         Variables:
           CODE_VERSION: !FindInMap [Constants, Code, Version]
@@ -382,6 +397,8 @@ Resources:
               Ref: RestApi
             Path: /pre-sign
             Method: post
+      CodeSigningConfigArn:
+        Ref: CodeSigning
       Environment:
         Variables:
           S3_BUCKET_NAME:
@@ -408,6 +425,8 @@ Resources:
       Description: Provides Terraform Remote Service Discovery
       Role:
         Fn::GetAtt: IAMRoleLambdaTerraformRegistry.Arn
+      CodeSigningConfigArn:
+        Ref: CodeSigning
       Events:
         ServiceDiscovery:
           Type: Api
