@@ -7,7 +7,6 @@ region = "eu-west-1"
 [dev.package.parameters]
 s3_bucket = "sam-terraform-registry-dev"
 signing_profiles = [
-  "LambdaFunctionCodeCopier=TerraformRegistryLambdaSigner_Ireland_2021",
   "LambdaCreatePreSignedURL=TerraformRegistryLambdaSigner_Ireland_2021",
   "LambdaServiceDiscovery=TerraformRegistryLambdaSigner_Ireland_2021"
 ]

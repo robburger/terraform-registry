@@ -308,8 +308,6 @@ Resources:
         Fn::GetAtt: IAMRoleLambdaFunctionCodeCopier.Arn
       Runtime: python3.8
       Timeout: 300
-      CodeSigningConfigArn:
-        Ref: CodeSigning
       InlineCode: |
         import json
         import logging
