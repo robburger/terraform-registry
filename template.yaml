@@ -13,7 +13,8 @@ Parameters:
     Type: String
     Description: A prefix to be used for all resource names - a suggestion would be a lower-case, hyphenated company name. e.g. 'my-company'
     AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$
-    ConstraintDescription: A prefix is required and can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-).
+    MaxLength: 26
+    ConstraintDescription: A prefix is required and can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-). It must be less than 26 characters.
   LambdaMemorySize:
     Type: Number
     Description: Memory size for all Lamdba functions (in MB)
