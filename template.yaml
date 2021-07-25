@@ -405,7 +405,7 @@ Resources:
                 else:
                     copy_code(code_version, source_bucket, dest_bucket)
             except Exception as e:
-                logging.exception(f'Exception when copying code from {source_bucket} to s3://{dest_bucket}: {e}')
+                logging.exception(f'Exception: {e}')
                 send_cfn_resp(event, context, 'FAILED')
             else:
                 send_cfn_resp(event, context, 'SUCCESS')
