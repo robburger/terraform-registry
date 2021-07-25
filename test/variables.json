@@ -1,0 +1,5 @@
+{
+  "LambdaCreatePreSignedURL": {
+    "S3_BUCKET_NAME": "localbucket"
+  }
+}

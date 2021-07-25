@@ -1,0 +1,622 @@
+##############
+# SAM Template
+##############
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+
+Description: An AWS SAM-based Terraform Module and Provider Registry
+
+##########
+# Mappings
+##########
+Mappings:
+  Constants:
+    Build:
+      Date: '<BUILD_DATE_PLACEHOLDER>'
+    Code:
+      Version: '<CODE_VERSION_PLACEHOLDER>'
+    CodeSigning:
+      VersionProfiledArn: 'arn:aws:signer:eu-west-1:171947101422:/signing-profiles/TerraformRegistryLambdaSigner_Ireland_2021/cCJXtqD01u'
+
+############
+# Parameters
+############
+Parameters:
+  CertificateArn:
+    Type: String
+    Description: The ARN of an existing Amazon Certificate Manager SSL certificate. Leave this blank if CreateSSLCertificate is 'true'.
+    Default: ''
+  CreateSSLCertificate:
+    Type: String
+    Description: Set to 'true' to automatically create an SSL certificate. If this parameter is 'true', the required validation records will be created in the Hosted Zone selected in Route53ZoneId.
+    Default: false
+    AllowedValues:
+      - true
+      - false
+  CustomDomainName:
+    Type: String
+    Description: A fully-qualified DNS domain name to use for the API Gateway. You must either set CreateSSLCertificate to 'true' or enter an ARN for a valid Amazon Certificate Manager SSL certificate in CertificateArn below.
+    Default: ''
+  DDBTableModulesName:
+    Type: String
+    Description: Name of the DynamoDB table to store module metadata - default is 'prefix-terraform-registry-modules'
+    Default: ''
+  DDBTableProvidersName:
+    Type: String
+    Description: Name of the DynamoDB table to store provider metadata - default is 'prefix-terraform-registry-providers'
+    Default: ''
+  LambdaMemorySize:
+    Type: Number
+    Description: Memory size for all Lamdba functions (in MB)
+    Default: 128
+    MinValue: 128
+    MaxValue: 2048
+  LambdaTimeout:
+    Type: Number
+    Description: Timeout for all Lambda functions (in seconds)
+    Default: 5
+  Prefix:
+    Type: String
+    Description: A prefix to be used for all resource names - a suggestion would be a lower-case, hyphenated company name. e.g. 'my-company'
+    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$
+    MaxLength: 26
+    ConstraintDescription: A prefix is required and can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-). It must be less than 26 characters.
+  Route53ZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: The Route 53 Hosted Zone in which to create the custom domain name. The Hosted Zone must be managed in this AWS Account.
+    Default: ''
+    AllowedPattern: .*
+    ConstraintDescription: You must select a Route 53 Hosted Zone in this account.
+  S3BucketFunctionCodeName:
+    Type: String
+    Description: Globally unique name of the S3 bucket to store Lambda function code - default is 'prefix-terraform-registry-function-code'
+    Default: ''
+  S3BucketSourceCode:
+    Type: String
+    Default: s3://sam-terraform-registry
+    Description: Override the default location of the function source code - DO NOT CHANGE unless you know what you are doing!
+  S3BucketUploadsName:
+    Type: String
+    Description: Globally unique name of the S3 bucket to store modules and providers - default is 'prefix-terraform-registry-uploads'
+    Default: ''
+
+#########
+# Globals
+#########
+Globals:
+  Function:
+    Runtime: nodejs14.x
+    MemorySize:
+      Ref: LambdaMemorySize
+    Timeout:
+      Ref: LambdaTimeout
+
+############
+# Conditions
+############
+Conditions:
+  SetCreateSSLCertificate:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: CreateSSLCertificate
+          - false
+  SetDDBTableModulesName:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: DDBTableModulesName
+          - ''
+  SetDDBTableProvidersName:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: DDBTableProvidersName
+          - ''
+  SetS3BucketFunctionCodeName:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: S3BucketFunctionCodeName
+          - ''
+  SetS3BucketSourceCode:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: S3BucketSourceCode
+          - ''
+  SetS3BucketUploadsName:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: S3BucketUploadsName
+          - ''
+
+#######
+# Rules
+#######
+Rules:
+  MustSetSSL:
+    Assertions:
+      - Assert:
+          Fn::Or:
+            - Fn::Not:
+                - Fn::Equals:
+                    - Ref: CreateSSLCertificate
+                    - 'false'
+            - Fn::Not:
+                - Fn::Equals:
+                    - Ref: CertificateArn
+                    - ''
+        AssertDescription: CreateSSLCertificate must be true, or CertificateArn must be set
+
+###########
+# Resources
+###########
+Resources:
+  # Code Signing
+  CodeSigning:
+    Type: AWS::Lambda::CodeSigningConfig
+    Properties:
+      Description: Code Signing for Terraform Registry Lambdas
+      AllowedPublishers:
+        SigningProfileVersionArns:
+          - Fn::FindInMap: [Constants, CodeSigning, VersionProfiledArn]
+      CodeSigningPolicies:
+        UntrustedArtifactOnDeployment: Enforce
+
+  # Custom Resources
+  CustomFunctionCode:
+    Type: Custom::FunctionCode
+    Properties:
+      ServiceToken:
+        Fn::GetAtt: LambdaFunctionCodeCopier.Arn
+      BuildDate:
+        Fn::FindInMap: [Constants, Build, Date]
+      CodeVersion:
+        Fn::FindInMap: [Constants, Code, Version]
+      DestBucket:
+        Ref: S3BucketFunctionCode
+      SourceBucket:
+        Ref: S3BucketSourceCode
+
+  # DynamoDB Tables
+  DDBTableModules:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    Properties:
+      TableName:
+        Fn::If:
+          - SetDDBTableModulesName
+          - Ref: DDBTableModulesName
+          - Fn::Join:
+              - '-'
+              - - Ref: Prefix
+                - 'terraform-registry-modules'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: version
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+        - AttributeName: version
+          KeyType: RANGE
+
+  DDBTableProviders:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    Properties:
+      TableName:
+        Fn::If:
+          - SetDDBTableProvidersName
+          - Ref: DDBTableProvidersName
+          - Fn::Join:
+              - '-'
+              - - Ref: Prefix
+                - 'terraform-registry-providers'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: version
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+        - AttributeName: version
+          KeyType: RANGE
+
+  # IAM Roles & Policies
+  IAMRoleLambdaFunctionCodeCopier:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry-FunctionCodeCopier'
+      Description: Provides the FunctionCodeCopier Lambda with permissions to execute actions
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaFunctionCodeCopierRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - Fn::Join:
+                      - '/'
+                      - - Fn::GetAtt: S3BucketFunctionCode.Arn
+                        - '*'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - Fn::GetAtt: S3BucketFunctionCode.Arn
+                  - Fn::Join:
+                      - ''
+                      - - 'arn:aws:s3:::'
+                        - !Select [1, !Split ['s3://', !Ref S3BucketSourceCode]]
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - Fn::Join:
+                      - ''
+                      - - 'arn:aws:s3:::'
+                        - !Select [1, !Split ['s3://', !Ref S3BucketSourceCode]]
+                        - '/*'
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource:
+                  - Fn::Join:
+                      - ':'
+                      - - 'arn:aws:cloudformation'
+                        - Ref: AWS::Region
+                        - Ref: AWS::AccountId
+                        - 'stack/*'
+              - Effect: Allow
+                Action:
+                  - lambda:GetFunctionConfiguration
+                Resource:
+                  - Fn::Join:
+                      - ':'
+                      - - 'arn:aws:lambda'
+                        - Ref: AWS::Region
+                        - Ref: AWS::AccountId
+                        - 'function'
+                        - Fn::Join:
+                            - '-'
+                            - - Ref: Prefix
+                              - 'terraform-registry-FunctionCodeCopier'
+
+  IAMRoleLambdaTerraformRegistry:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry-TerraformRegistry'
+      Description: Provides the Terraform Registry Lambdas with permissions to execute actions
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  # Lambdas
+  ## Custom
+  LambdaFunctionCodeCopier:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry-FunctionCodeCopier'
+      Handler: index.handler
+      Description: Copies the Terraform Module Registry function code to the destination S3 bucket
+      Environment:
+        Variables:
+          CODE_VERSION:
+            Fn::FindInMap: [Constants, Code, Version]
+      Role:
+        Fn::GetAtt: IAMRoleLambdaFunctionCodeCopier.Arn
+      Runtime: python3.8
+      Timeout: 300
+      InlineCode: |
+        import json
+        import logging
+        import threading
+        import boto3
+        import urllib.request
+        import os
+
+        logging.getLogger().setLevel(logging.INFO)
+
+        def send_cfn_resp(event, context, response_status):
+            resp_body = json.dumps({
+                'Status': response_status,
+                'Reason': f'See reasons in CloudWatch Logs - Group: {context.log_group_name}, Stream: {context.log_stream_name}',
+                'PhysicalResourceId': context.log_stream_name,
+                'StackId': event['StackId'],
+                'RequestId': event['RequestId'],
+                'LogicalResourceId': event['LogicalResourceId']
+            }).encode('utf-8')
+            req = urllib.request.Request(url=event['ResponseURL'], data=resp_body, method='PUT')
+            with urllib.request.urlopen(req) as res:
+                logging.info(f'Sent {response_status} response to CloudFormation: {res.status}, {res.reason}')
+        def delete_code(code_version, dest_bucket, lambda_arn, stack_id):
+            cf_client = boto3.client('cloudformation')
+            terraform_registry_stack = cf_client.describe_stacks(StackName=f'{stack_id}')
+            if terraform_registry_stack['Stacks'][0]['StackStatus'] == 'DELETE_IN_PROGRESS':
+                logging.info(f'Stack {stack_id} is being deleted, all bucket objects will be deleted')
+                s3_resource = boto3.resource('s3')
+                dest_bucket_resource = s3_resource.Bucket(dest_bucket)
+                dest_bucket_resource.objects.all().delete()
+                return None
+            lambda_client = boto3.client('lambda')
+            code_copier_lambda = lambda_client.get_function_configuration(FunctionName=f'{lambda_arn}')
+            if code_version == code_copier_lambda.get('Environment').get('Variables').get('CODE_VERSION'):
+                logging.info(f'Skipping delete as code version still in use')
+            else:
+                s3_resource = boto3.resource('s3')
+                dest_bucket_resource = s3_resource.Bucket(dest_bucket)
+                objects_to_delete = []
+                for object in dest_bucket_resource.objects.filter(Prefix=f'{code_version}/signed_'):
+                    logging.info(f'Deleting s3://{dest_bucket}/{object.key}')
+                    objects_to_delete.append({'Key': object.key})
+                dest_bucket_resource.delete_objects(Delete={'Objects': objects_to_delete})
+
+        def copy_code(code_version, source_bucket, dest_bucket):
+            logging.info(f'Copying code from {source_bucket} to s3://{dest_bucket}')
+            s3_client = boto3.client('s3')
+            s3_resource = boto3.resource('s3')
+            s3_prelude = 's3://'
+            if source_bucket.startswith(s3_prelude):
+                source_bucket_name = source_bucket[len(s3_prelude):]
+                source_bucket_resource = s3_resource.Bucket(source_bucket_name)
+                for object in source_bucket_resource.objects.filter(Prefix=f'{code_version}/signed_'):
+                    logging.info(f'Copying s3://{source_bucket_name}/{object.key} to s3://{dest_bucket}/{object.key}')
+                    response = s3_client.get_object(Bucket=source_bucket_name, Key=object.key)
+                    data = response['Body']
+                    s3_client.upload_fileobj(data, dest_bucket, object.key)
+            else:
+                raise Exception('Full S3 URL must be provided in the form s3://bucket-name')
+
+        def timeout(event, context):
+            logging.error('Execution is about to time out, sending failure response to CloudFormation')
+            send_cfn_resp(event, context, 'FAILED')
+            timer.cancel()
+            return None
+
+        def handler(event, context):
+            # Make sure we send a failure to CloudFormation if the function is going to timeout
+            timer = threading.Timer((context.get_remaining_time_in_millis() / 1000.00) - 0.5, timeout, args=[event, context])
+            timer.start()
+            logging.info(f'Received event: {json.dumps(event)}')
+            try:
+                code_version = event['ResourceProperties']['CodeVersion']
+                source_bucket = event['ResourceProperties']['SourceBucket']
+                dest_bucket = event['ResourceProperties']['DestBucket']
+            except KeyError as e:
+                logging.exception(f'Missing a required property: {e}')
+                send_cfn_resp(event, context, 'FAILED')
+                timer.cancel()
+                return None
+            try:
+                if event['RequestType'] == 'Delete':
+                    delete_code(code_version, dest_bucket, event['ServiceToken'], event['StackId'])
+                else:
+                    copy_code(code_version, source_bucket, dest_bucket)
+            except Exception as e:
+                logging.exception(f'Exception: {e}')
+                send_cfn_resp(event, context, 'FAILED')
+            else:
+                send_cfn_resp(event, context, 'SUCCESS')
+            finally:
+                timer.cancel()
+                return None
+
+  ## File
+  LambdaCreatePreSignedURL:
+    Type: AWS::Serverless::Function
+    DependsOn: CustomFunctionCode
+    Properties:
+      FunctionName:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry-file-CreatePreSignedURL'
+      CodeUri: build/file/createPreSignedURL
+      Handler: createPreSignedURL.handler
+      Description: Generates an S3 pre-signed URL for uploading modules or providers
+      Role:
+        Fn::GetAtt: IAMRoleLambdaTerraformRegistry.Arn
+      Events:
+        CreatePreSignedURL:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RestApi
+            Path: /pre-sign
+            Method: post
+      CodeSigningConfigArn:
+        Ref: CodeSigning
+      Environment:
+        Variables:
+          S3_BUCKET_NAME:
+            Fn::If:
+              - SetS3BucketUploadsName
+              - Ref: S3BucketUploadsName
+              - Fn::Join:
+                  - '-'
+                  - - Ref: Prefix
+                    - 'terraform-registry-uploads'
+
+  ## Service Discovery
+  LambdaServiceDiscovery:
+    Type: AWS::Serverless::Function
+    DependsOn: CustomFunctionCode
+    Properties:
+      FunctionName:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry-ServiceDiscovery'
+      CodeUri: build/serviceDiscovery/serviceDiscovery
+      Handler: serviceDiscovery.handler
+      Description: Provides Terraform Remote Service Discovery
+      Role:
+        Fn::GetAtt: IAMRoleLambdaTerraformRegistry.Arn
+      CodeSigningConfigArn:
+        Ref: CodeSigning
+      Events:
+        ServiceDiscovery:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RestApi
+            Path: /.well-known/terraform.json
+            Method: get
+
+  # Rest API
+  RestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry'
+      Description: Processes API requests for the terraform-registry
+      StageName: Prod
+      Domain:
+        DomainName:
+          Ref: CustomDomainName
+        CertificateArn:
+          Fn::If:
+            - SetCreateSSLCertificate
+            - Ref: SSLCertificate
+            - Ref: CertificateArn
+        Route53:
+          HostedZoneId:
+            Ref: Route53ZoneId
+        SecurityPolicy: TLS_1_2
+
+  # S3 Buckets
+  S3BucketFunctionCode:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        Fn::If:
+          - SetS3BucketFunctionCodeName
+          - Ref: S3BucketFunctionCodeName
+          - Fn::Join:
+              - '-'
+              - - Ref: Prefix
+                - 'terraform-registry-function-code'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'aws:kms'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  S3BucketUploads:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName:
+        Fn::If:
+          - SetS3BucketUploadsName
+          - Ref: S3BucketUploadsName
+          - Fn::Join:
+              - '-'
+              - - Ref: Prefix
+                - 'terraform-registry-uploads'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'aws:kms'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # SSL Certificates
+  SSLCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Condition: SetCreateSSLCertificate
+    Properties:
+      DomainName:
+        Ref: CustomDomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName:
+            Ref: CustomDomainName
+          HostedZoneId:
+            Ref: Route53ZoneId
+
+##########
+# Metadata
+##########
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Required
+        Parameters:
+          - Prefix
+          - CustomDomainName
+          - Route53ZoneId
+      - Label:
+          default: API Gateway (One Option Required)
+        Parameters:
+          - CreateSSLCertificate
+          - CertificateArn
+      - Label:
+          default: Lambda Function (Optional)
+        Parameters:
+          - LambdaMemorySize
+          - LambdaTimeout
+      - Label:
+          default: Resources (Optional)
+        Parameters:
+          - S3BucketUploadsName
+          - DDBTableModulesName
+          - DDBTableProvidersName
+      - Label:
+          default: Advanced (Optional)
+        Parameters:
+          - S3BucketFunctionCodeName
+          - S3BucketSourceCode
+    ParameterLabels:
+      Prefix:
+        default: 'Prefix *'
+      CustomDomainName:
+        default: 'CustomDomainName *'
+      Route53ZoneId:
+        default: 'Route53ZoneId *'

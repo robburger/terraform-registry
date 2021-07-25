@@ -1,0 +1,27 @@
+version=0.1
+
+[dev.global.parameters]
+stack_name = "terraform-registry-dev"
+region = "eu-west-1"
+
+[dev.package.parameters]
+s3_bucket = "sam-terraform-registry-dev"
+signing_profiles = [
+  "LambdaCreatePreSignedURL=TerraformRegistryLambdaSigner_Ireland_2021",
+  "LambdaServiceDiscovery=TerraformRegistryLambdaSigner_Ireland_2021"
+]
+output_template_file = "./build/latest-dev.yaml"
+
+[dev.publish.parameters]
+template = "./build/latest-dev.yaml"
+
+[prod.global.parameters]
+stack_name = "terraform-registry"
+region = "eu-west-1"
+
+[prod.package.parameters]
+s3_bucket = "sam-terraform-registry"
+output_template_file = "./build/latest.yaml"
+
+[prod.publish.parameters]
+template = "./build/latest.yaml"
