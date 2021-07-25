@@ -177,6 +177,7 @@ Resources:
   # DynamoDB Tables
   DDBTableModules:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
     Properties:
       TableName:
         Fn::If:
@@ -200,6 +201,7 @@ Resources:
 
   DDBTableProviders:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
     Properties:
       TableName:
         Fn::If:
