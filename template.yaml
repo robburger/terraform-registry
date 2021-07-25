@@ -288,6 +288,7 @@ Resources:
                             - '-'
                             - - Ref: Prefix
                               - 'terraform-registry-FunctionCodeCopier'
+
   IAMRoleLambdaTerraformRegistry:
     Type: AWS::IAM::Role
     Properties:
