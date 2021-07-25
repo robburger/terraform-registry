@@ -79,6 +79,10 @@ Parameters:
     Type: String
     Description: Globally unique name of the S3 bucket to store modules and providers - default is 'prefix-terraform-registry-uploads'
     Default: ''
+  SQSQueueUploadsName:
+    Type: String
+    Description: Name of the SQS queue that processes module and provider uploads - default is 'prefix-terraform-registry-uploads'
+    Default: ''
 
 #########
 # Globals
@@ -124,6 +128,11 @@ Conditions:
     Fn::Not:
       - Fn::Equals:
           - Ref: S3BucketUploadsName
+          - ''
+  SetSQSQueueUploadsName:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: SQSQueueUploadsName
           - ''
 
 #######
@@ -321,6 +330,21 @@ Resources:
               - 'sts:AssumeRole'
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaTerraformRegistryRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowLambdaS3Access
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectTagging
+                Resource:
+                  - Fn::Join:
+                      - '/'
+                      - - Fn::GetAtt: S3BucketUploads.Arn
+                        - '*'
 
   # Lambdas
   ## Custom
@@ -547,6 +571,7 @@ Resources:
   S3BucketUploads:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
+    DependsOn: SQSQueueUploadPolicy
     Properties:
       BucketName:
         Fn::If:
@@ -560,11 +585,78 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: 'aws:kms'
+      NotificationConfiguration:
+        QueueConfigurations:
+          - Event: s3:ObjectCreated:*
+            Queue:
+              Fn::GetAtt: SQSQueueUpload.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: modules/
+                  - Name: suffix
+                    Value: .zip
+          - Event: s3:ObjectCreated:*
+            Queue:
+              Fn::GetAtt: SQSQueueUpload.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: providers/
+                  - Name: suffix
+                    Value: .zip
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+
+  # SQS Queues
+  SQSQueueUpload:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName:
+        Fn::If:
+          - SetSQSQueueUploadsName
+          - Ref: SQSQueueUploadsName
+          - Fn::Join:
+              - '-'
+              - - Ref: Prefix
+                - 'terraform-registry-uploads'
+
+  SQSQueueUploadPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - Ref: SQSQueueUpload
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - s3.amazonaws.com
+            Action:
+              - sqs:SendMessage
+            Resource:
+              Fn::GetAtt: SQSQueueUpload.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn:
+                  Fn::Join:
+                    - ''
+                    - - 'arn:aws:s3:::'
+                      - Fn::If:
+                          - SetS3BucketUploadsName
+                          - Ref: S3BucketUploadsName
+                          - Fn::Join:
+                              - '-'
+                              - - Ref: Prefix
+                                - 'terraform-registry-uploads'
+              StringEquals:
+                aws:SourceAccount:
+                  Ref: AWS::AccountId
 
   # SSL Certificates
   SSLCertificate:
@@ -606,6 +698,7 @@ Metadata:
           default: Resources (Optional)
         Parameters:
           - S3BucketUploadsName
+          - SQSQueueUploadsName
           - DDBTableModulesName
           - DDBTableProvidersName
       - Label:
