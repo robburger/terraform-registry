@@ -274,7 +274,20 @@ Resources:
                       - - 'arn:aws:s3:::'
                         - !Select [1, !Split ['s3://', !Ref S3BucketSourceCode]]
                         - '/*'
-
+              - Effect: Allow
+                Action:
+                  - lambda:GetFunctionConfiguration
+                Resource:
+                  - Fn::Join:
+                      - ':'
+                      - - 'arn:aws:lambda'
+                        - Ref: AWS::Region
+                        - Ref: AWS::AccountId
+                        - 'function'
+                        - Fn::Join:
+                            - '-'
+                            - - Ref: Prefix
+                              - 'terraform-registry-FunctionCodeCopier'
   IAMRoleLambdaTerraformRegistry:
     Type: AWS::IAM::Role
     Properties:
@@ -308,6 +321,10 @@ Resources:
             - 'terraform-registry-FunctionCodeCopier'
       Handler: index.handler
       Description: Copies the Terraform Module Registry function code to the destination S3 bucket
+      Environment:
+        Variables:
+          CODE_VERSION:
+            Fn::FindInMap: [Constants, Code, Version]
       Role:
         Fn::GetAtt: IAMRoleLambdaFunctionCodeCopier.Arn
       Runtime: python3.8
@@ -329,22 +346,24 @@ Resources:
                 'PhysicalResourceId': context.log_stream_name,
                 'StackId': event['StackId'],
                 'RequestId': event['RequestId'],
-                'LogicalResourceId': event['LogicalResourceId'],
-                'Data': {}
+                'LogicalResourceId': event['LogicalResourceId']
             }).encode('utf-8')
             req = urllib.request.Request(url=event['ResponseURL'], data=resp_body, method='PUT')
             with urllib.request.urlopen(req) as res:
                 logging.info(f'Sent {response_status} response to CloudFormation: {res.status}, {res.reason}')
-
-        def delete_code(code_version, dest_bucket):
-            logging.info(f'Deleting code from s3://{dest_bucket}')
-            s3_resource = boto3.resource('s3')
-            dest_bucket_resource = s3_resource.Bucket(dest_bucket)
-            objects_to_delete = []
-            for object in dest_bucket_resource.objects.filter(Prefix=f'{code_version}/signed_'):
-                logging.info(f'Deleting s3://{dest_bucket}/{object.key}')
-                objects_to_delete.append({'Key': object.key})
-            dest_bucket_resource.delete_objects(Delete={'Objects': objects_to_delete})
+        def delete_code(code_version, dest_bucket, lambda_arn):
+            lambda_client = boto3.client('lambda')
+            code_copier_lambda = lambda_client.get_function_configuration(FunctionName=f'{lambda_arn}')
+            if code_version == code_copier_lambda.get('Environment').get('Variables').get('CODE_VERSION'):
+                logging.info(f'Skipping delete as code version still in use')
+            else:
+                s3_resource = boto3.resource('s3')
+                dest_bucket_resource = s3_resource.Bucket(dest_bucket)
+                objects_to_delete = []
+                for object in dest_bucket_resource.objects.filter(Prefix=f'{code_version}/signed_'):
+                    logging.info(f'Deleting s3://{dest_bucket}/{object.key}')
+                    objects_to_delete.append({'Key': object.key})
+                dest_bucket_resource.delete_objects(Delete={'Objects': objects_to_delete})
 
         def copy_code(code_version, source_bucket, dest_bucket):
             logging.info(f'Copying code from {source_bucket} to s3://{dest_bucket}')
@@ -382,7 +401,7 @@ Resources:
                 return None
             try:
                 if event['RequestType'] == 'Delete':
-                    delete_code(code_version, dest_bucket)
+                    delete_code(code_version, dest_bucket, event['ServiceToken'])
                 else:
                     copy_code(code_version, source_bucket, dest_bucket)
             except Exception as e:
