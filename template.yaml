@@ -79,6 +79,10 @@ Parameters:
     Type: String
     Description: Globally unique name of the S3 bucket to store modules and providers - default is 'prefix-terraform-registry-uploads'
     Default: ''
+  SQSQueueUploadsName:
+    Type: String
+    Description: Name of the SQS queue that processes module and provider uploads - default is 'prefix-terraform-registry-uploads'
+    Default: ''
 
 #########
 # Globals
@@ -124,6 +128,11 @@ Conditions:
     Fn::Not:
       - Fn::Equals:
           - Ref: S3BucketUploadsName
+          - ''
+  SetSQSQueueUploadsName:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: SQSQueueUploadsName
           - ''
 
 #######
@@ -566,6 +575,40 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
+  # SQS Queues
+  SQSQueueUpload:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName:
+        Fn::If:
+          - SetSQSQueueUploadsName
+          - Ref: SQSQueueUploadsName
+          - Fn::Join:
+              - '-'
+              - - Ref: Prefix
+                - 'terraform-registry-uploads'
+      KmsMasterKeyId: alias/aws/sqs
+
+  SQSQueueUploadPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - Ref: SQSQueueUpload
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - Ref: AWS::AccountId
+            Action:
+              - sqs:SendMessage
+            Resource:
+              Fn::GetAtt: SQSQueueUpload.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn:
+                  Fn::GetAtt: S3BucketUploads.Arn
+
   # SSL Certificates
   SSLCertificate:
     Type: AWS::CertificateManager::Certificate
@@ -606,6 +649,7 @@ Metadata:
           default: Resources (Optional)
         Parameters:
           - S3BucketUploadsName
+          - SQSQueueUploadsName
           - DDBTableModulesName
           - DDBTableProvidersName
       - Label:
