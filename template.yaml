@@ -526,6 +526,7 @@ Resources:
 
   S3BucketUploads:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
     Properties:
       BucketName:
         Fn::If:
