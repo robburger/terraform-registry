@@ -276,6 +276,16 @@ Resources:
                         - '/*'
               - Effect: Allow
                 Action:
+                  - cloudformation:DescribeStacks
+                Resource:
+                  - Fn::Join:
+                      - ':'
+                      - - 'arn:aws:cloudformation'
+                        - Ref: AWS::Region
+                        - Ref: AWS::AccountId
+                        - 'stack/*'
+              - Effect: Allow
+                Action:
                   - lambda:GetFunctionConfiguration
                 Resource:
                   - Fn::Join:
@@ -352,7 +362,15 @@ Resources:
             req = urllib.request.Request(url=event['ResponseURL'], data=resp_body, method='PUT')
             with urllib.request.urlopen(req) as res:
                 logging.info(f'Sent {response_status} response to CloudFormation: {res.status}, {res.reason}')
-        def delete_code(code_version, dest_bucket, lambda_arn):
+        def delete_code(code_version, dest_bucket, lambda_arn, stack_id):
+            cf_client = boto3.client('cloudformation')
+            terraform_registry_stack = cf_client.describe_stacks(StackName=f'{stack_id}')
+            if terraform_registry_stack['Stacks'][0]['StackStatus'] == 'DELETE_IN_PROGRESS':
+                logging.info(f'Stack {stack_id} is being deleted, all bucket objects will be deleted')
+                s3_resource = boto3.resource('s3')
+                dest_bucket_resource = s3_resource.Bucket(dest_bucket)
+                dest_bucket_resource.objects.all().delete()
+                return None
             lambda_client = boto3.client('lambda')
             code_copier_lambda = lambda_client.get_function_configuration(FunctionName=f'{lambda_arn}')
             if code_version == code_copier_lambda.get('Environment').get('Variables').get('CODE_VERSION'):
@@ -404,7 +422,7 @@ Resources:
                 return None
             try:
                 if event['RequestType'] == 'Delete':
-                    delete_code(code_version, dest_bucket, event['ServiceToken'])
+                    delete_code(code_version, dest_bucket, event['ServiceToken'], event['StackId'])
                 else:
                     copy_code(code_version, source_bucket, dest_bucket)
             except Exception as e:
