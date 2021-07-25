@@ -384,6 +384,8 @@ Resources:
         def timeout(event, context):
             logging.error('Execution is about to time out, sending failure response to CloudFormation')
             send_cfn_resp(event, context, 'FAILED')
+            timer.cancel()
+            return None
 
         def handler(event, context):
             # Make sure we send a failure to CloudFormation if the function is going to timeout
