@@ -610,7 +610,6 @@ Resources:
               - '-'
               - - Ref: Prefix
                 - 'terraform-registry-uploads'
-      KmsMasterKeyId: alias/aws/sqs
 
   SQSQueueUploadPolicy:
     Type: AWS::SQS::QueuePolicy
