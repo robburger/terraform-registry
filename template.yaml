@@ -556,6 +556,7 @@ Resources:
   S3BucketUploads:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
+    DependsOn: SQSQueueUploadPolicy
     Properties:
       BucketName:
         Fn::If:
@@ -569,6 +570,28 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: 'aws:kms'
+      NotificationConfiguration:
+        QueueConfigurations:
+          - Event: s3:ObjectCreated:*
+            Queue:
+              Fn::GetAtt: SQSQueueUpload.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: modules/
+                  - Name: suffix
+                    Value: .zip
+          - Event: s3:ObjectCreated:*
+            Queue:
+              Fn::GetAtt: SQSQueueUpload.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: providers/
+                  - Name: suffix
+                    Value: .zip
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -598,8 +621,8 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS:
-                - Ref: AWS::AccountId
+              Service:
+                - s3.amazonaws.com
             Action:
               - sqs:SendMessage
             Resource:
@@ -607,7 +630,19 @@ Resources:
             Condition:
               ArnEquals:
                 aws:SourceArn:
-                  Fn::GetAtt: S3BucketUploads.Arn
+                  Fn::Join:
+                    - ''
+                    - - 'arn:aws:s3:::'
+                      - Fn::If:
+                          - SetS3BucketUploadsName
+                          - Ref: S3BucketUploadsName
+                          - Fn::Join:
+                              - '-'
+                              - - Ref: Prefix
+                                - 'terraform-registry-uploads'
+              StringEquals:
+                aws:SourceAccount:
+                  Ref: AWS::AccountId
 
   # SSL Certificates
   SSLCertificate:
