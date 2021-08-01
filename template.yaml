@@ -356,7 +356,11 @@ Resources:
               - Sid: AllowDDBAccess
                 Effect: Allow
                 Action:
+                  - dynamodb:GetItem
                   - dynamodb:PutItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:UpdateItem
                 Resource:
                   - Fn::GetAtt: DDBTableModules.Arn
                   - Fn::GetAtt: DDBTableProviders.Arn
@@ -566,8 +570,126 @@ Resources:
                   - - Ref: Prefix
                     - 'terraform-registry-uploads'
 
+  ## Module
+  LambdaModuleV1DownloadSpecifiedVersion:
+    ### https://www.terraform.io/docs/registry/api.html#download-source-code-for-a-specific-module-version
+    Type: AWS::Serverless::Function
+    DependsOn: CustomFunctionCode
+    Properties:
+      FunctionName:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry-ModuleV1DownloadSpecifiedVersion'
+      CodeUri: build/module/moduleV1DownloadSpecifiedVersion
+      Handler: moduleV1DownloadSpecifiedVersion.handler
+      Description: Downloads the specified version of a module for a single provider
+      Role:
+        Fn::GetAtt: IAMRoleLambdaTerraformRegistry.Arn
+      CodeSigningConfigArn:
+        Ref: CodeSigning
+      Events:
+        ModuleV1DownloadSpecifiedVersion:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RestApi
+            Path: /modules/v1/{namespace}/{name}/{provider}/{version}/download
+            Method: get
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME_MODULES:
+            Fn::If:
+              - SetDDBTableModulesName
+              - Ref: DDBTableModulesName
+              - Fn::Join:
+                  - '-'
+                  - - Ref: Prefix
+                    - 'terraform-registry-modules'
+          S3_BUCKET_NAME:
+            Fn::If:
+              - SetS3BucketUploadsName
+              - Ref: S3BucketUploadsName
+              - Fn::Join:
+                  - '-'
+                  - - Ref: Prefix
+                    - 'terraform-registry-uploads'
+
+  LambdaModuleV1ListAvailableVersions:
+    ### https://www.terraform.io/docs/registry/api.html#list-available-versions-for-a-specific-module
+    Type: AWS::Serverless::Function
+    DependsOn: CustomFunctionCode
+    Properties:
+      FunctionName:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry-ModuleV1ListAvailableVersions'
+      CodeUri: build/module/moduleV1ListAvailableVersions
+      Handler: moduleV1ListAvailableVersions.handler
+      Description: Resolves module sources, returning the available versions for a given fully-qualified module
+      Role:
+        Fn::GetAtt: IAMRoleLambdaTerraformRegistry.Arn
+      CodeSigningConfigArn:
+        Ref: CodeSigning
+      Events:
+        ModuleV1ListAvailableVersions:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RestApi
+            Path: /modules/v1/{namespace}/{name}/{provider}/versions
+            Method: get
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME_MODULES:
+            Fn::If:
+              - SetDDBTableModulesName
+              - Ref: DDBTableModulesName
+              - Fn::Join:
+                  - '-'
+                  - - Ref: Prefix
+                    - 'terraform-registry-modules'
+
+  LambdaModuleV1ListLatestSpecifiedProvider:
+    ### https://www.terraform.io/docs/registry/api.html#latest-version-for-a-specific-module-provider
+    Type: AWS::Serverless::Function
+    DependsOn: CustomFunctionCode
+    Properties:
+      FunctionName:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry-ModuleV1ListLatestSpecifiedProvider'
+      CodeUri: build/module/moduleV1ListLatestSpecifiedProvider
+      Handler: moduleV1ListLatestSpecifiedProvider.handler
+      Description: Returns the latest version of a module for a single provider
+      Role:
+        Fn::GetAtt: IAMRoleLambdaTerraformRegistry.Arn
+      CodeSigningConfigArn:
+        Ref: CodeSigning
+      Events:
+        ModuleV1ListLatestSpecifiedProvider:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: RestApi
+            Path: /modules/v1/{namespace}/{name}/{provider}
+            Method: get
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME_MODULES:
+            Fn::If:
+              - SetDDBTableModulesName
+              - Ref: DDBTableModulesName
+              - Fn::Join:
+                  - '-'
+                  - - Ref: Prefix
+                    - 'terraform-registry-modules'
+
   ## Service Discovery
   LambdaServiceDiscovery:
+    ### https://www.terraform.io/docs/internals/remote-service-discovery.html
     Type: AWS::Serverless::Function
     DependsOn: CustomFunctionCode
     Properties:
