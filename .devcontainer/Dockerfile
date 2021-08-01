@@ -46,4 +46,4 @@ RUN set -e \
     && usermod -g docker node
 
 # Copy DockerD Startup
-COPY ./dockerd-start.sh /dockerd-start.sh
+COPY --chmod=755 ./dockerd-start.sh /dockerd-start.sh
