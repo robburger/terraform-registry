@@ -79,9 +79,17 @@ Parameters:
     Type: String
     Description: Globally unique name of the S3 bucket to store modules and providers - default is 'prefix-terraform-registry-uploads'
     Default: ''
-  SQSQueueUploadsName:
+  SQSQueueDLQName:
     Type: String
-    Description: Name of the SQS queue that processes module and provider uploads - default is 'prefix-terraform-registry-uploads'
+    Description: Name of the SQS queue that processes dead-letter messages - default is 'prefix-terraform-registry-dlq'
+    Default: ''
+  SQSQueueModuleUploadsName:
+    Type: String
+    Description: Name of the SQS queue that processes module uploads - default is 'prefix-terraform-registry-module-uploads'
+    Default: ''
+  SQSQueueProviderUploadsName:
+    Type: String
+    Description: Name of the SQS queue that processes provider uploads - default is 'prefix-terraform-registry-provider-uploads'
     Default: ''
 
 #########
@@ -129,10 +137,20 @@ Conditions:
       - Fn::Equals:
           - Ref: S3BucketUploadsName
           - ''
-  SetSQSQueueUploadsName:
+  SetSQSQueueDLQName:
     Fn::Not:
       - Fn::Equals:
-          - Ref: SQSQueueUploadsName
+          - Ref: SQSQueueDLQName
+          - ''
+  SetSQSQueueModuleUploadsName:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: SQSQueueModuleUploadsName
+          - ''
+  SetSQSQueueProviderUploadsName:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: SQSQueueProviderUploadsName
           - ''
 
 #######
@@ -250,7 +268,7 @@ Resources:
               Service:
                 - lambda.amazonaws.com
             Action:
-              - 'sts:AssumeRole'
+              - sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
@@ -327,7 +345,7 @@ Resources:
               Service:
                 - lambda.amazonaws.com
             Action:
-              - 'sts:AssumeRole'
+              - sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
@@ -335,9 +353,18 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
+              - Sid: AllowDDBAccess
+                Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource:
+                  - Fn::GetAtt: DDBTableModules.Arn
+                  - Fn::GetAtt: DDBTableProviders.Arn
               - Sid: AllowLambdaS3Access
                 Effect: Allow
                 Action:
+                  - s3:GetObject
+                  - s3:GetObjectTagging
                   - s3:PutObject
                   - s3:PutObjectTagging
                 Resource:
@@ -345,6 +372,15 @@ Resources:
                       - '/'
                       - - Fn::GetAtt: S3BucketUploads.Arn
                         - '*'
+              - Sid: AllowSQSAccess
+                Effect: Allow
+                Action:
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ReceiveMessage
+                Resource:
+                  - Fn::GetAtt: SQSQueueModuleUpload.Arn
+                  - Fn::GetAtt: SQSQueueProviderUpload.Arn
 
   # Lambdas
   ## Custom
@@ -461,6 +497,40 @@ Resources:
                 return None
 
   ## File
+  LambdaCreateModule:
+    Type: AWS::Serverless::Function
+    DependsOn: CustomFunctionCode
+    Properties:
+      FunctionName:
+        Fn::Join:
+          - '-'
+          - - Ref: Prefix
+            - 'terraform-registry-file-CreateModule'
+      CodeUri: build/file/createModule
+      Handler: createModule.handler
+      Description: Creates a DynamoDB entry with module metadata and location in S3
+      Role:
+        Fn::GetAtt: IAMRoleLambdaTerraformRegistry.Arn
+      Events:
+        CreateModule:
+          Type: SQS
+          Properties:
+            BatchSize: 1
+            Queue:
+              Fn::GetAtt: SQSQueueModuleUpload.Arn
+      CodeSigningConfigArn:
+        Ref: CodeSigning
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME_MODULES:
+            Fn::If:
+              - SetDDBTableModulesName
+              - Ref: DDBTableModulesName
+              - Fn::Join:
+                  - '-'
+                  - - Ref: Prefix
+                    - 'terraform-registry-modules'
+
   LambdaCreatePreSignedURL:
     Type: AWS::Serverless::Function
     DependsOn: CustomFunctionCode
@@ -589,7 +659,7 @@ Resources:
         QueueConfigurations:
           - Event: s3:ObjectCreated:*
             Queue:
-              Fn::GetAtt: SQSQueueUpload.Arn
+              Fn::GetAtt: SQSQueueModuleUpload.Arn
             Filter:
               S3Key:
                 Rules:
@@ -599,7 +669,7 @@ Resources:
                     Value: .zip
           - Event: s3:ObjectCreated:*
             Queue:
-              Fn::GetAtt: SQSQueueUpload.Arn
+              Fn::GetAtt: SQSQueueProviderUpload.Arn
             Filter:
               S3Key:
                 Rules:
@@ -614,33 +684,71 @@ Resources:
         RestrictPublicBuckets: true
 
   # SQS Queues
-  SQSQueueUpload:
+  SQSQueueDLQ:
     Type: AWS::SQS::Queue
     Properties:
       QueueName:
         Fn::If:
-          - SetSQSQueueUploadsName
-          - Ref: SQSQueueUploadsName
+          - SetSQSQueueDLQName
+          - Ref: SQSQueueDLQName
           - Fn::Join:
               - '-'
               - - Ref: Prefix
-                - 'terraform-registry-uploads'
+                - 'terraform-registry-dlq'
+
+  SQSQueueModuleUpload:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName:
+        Fn::If:
+          - SetSQSQueueModuleUploadsName
+          - Ref: SQSQueueModuleUploadsName
+          - Fn::Join:
+              - '-'
+              - - Ref: Prefix
+                - 'terraform-registry-module-uploads'
+      MessageRetentionPeriod: 600
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt: SQSQueueDLQ.Arn
+        maxReceiveCount: 10
+
+  SQSQueueProviderUpload:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName:
+        Fn::If:
+          - SetSQSQueueProviderUploadsName
+          - Ref: SQSQueueProviderUploadsName
+          - Fn::Join:
+              - '-'
+              - - Ref: Prefix
+                - 'terraform-registry-provider-uploads'
+      MessageRetentionPeriod: 600
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt: SQSQueueDLQ.Arn
+        maxReceiveCount: 5
 
   SQSQueueUploadPolicy:
     Type: AWS::SQS::QueuePolicy
     Properties:
       Queues:
-        - Ref: SQSQueueUpload
+        - Ref: SQSQueueModuleUpload
+        - Ref: SQSQueueProviderUpload
       PolicyDocument:
+        Version: '2012-10-17'
         Statement:
-          - Effect: Allow
+          - Sid: AllowS3ToSendMessage
+            Effect: Allow
             Principal:
               Service:
                 - s3.amazonaws.com
             Action:
               - sqs:SendMessage
             Resource:
-              Fn::GetAtt: SQSQueueUpload.Arn
+              - Fn::GetAtt: SQSQueueModuleUpload.Arn
+              - Fn::GetAtt: SQSQueueProviderUpload.Arn
             Condition:
               ArnEquals:
                 aws:SourceArn:
@@ -698,7 +806,9 @@ Metadata:
           default: Resources (Optional)
         Parameters:
           - S3BucketUploadsName
-          - SQSQueueUploadsName
+          - SQSQueueDLQName
+          - SQSQueueModuleUploadsName
+          - SQSQueueProviderUploadsName
           - DDBTableModulesName
           - DDBTableProvidersName
       - Label:

@@ -1,5 +1,8 @@
 {
   "LambdaCreatePreSignedURL": {
     "S3_BUCKET_NAME": "localbucket"
+  },
+  "LambdaCreateModule": {
+    "DYNAMODB_TABLE_NAME_MODULES": "localbucket"
   }
 }

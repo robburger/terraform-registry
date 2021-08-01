@@ -1,0 +1,20 @@
+{
+  "Records": [
+    {
+      "messageId": "abcdabcd-0123-0123-0123-abcdefabcdef",
+      "receiptHandle": "ABC=",
+      "md5OfBody": "abcdabcd012301230123abcdefabcdef",
+      "body": "{\"Records\":[{\"eventVersion\":\"2.1\",\"eventSource\":\"aws:s3\",\"awsRegion\":\"eu-west-1\",\"eventTime\":\"2021-01-01T00:00:00.000Z\",\"eventName\":\"ObjectCreated:Put\",\"userIdentity\":{\"principalId\":\"AWS:A1B2C3D4E5F6G7H8I9J0L:root\"},\"requestParameters\":{\"sourceIPAddress\":\"123.123.123.123\"},\"responseElements\":{\"x-amz-request-id\":\"A1B2C3D4E5F6G7H8\",\"x-amz-id-2\":\"ABC=\"},\"s3\":{\"s3SchemaVersion\":\"1.0\",\"configurationId\":\"abcdabcd-0123-0123-0123-abcdefabcdef\",\"bucket\":{\"name\":\"example-terraform-registry-uploads\",\"ownerIdentity\":{\"principalId\":\"A1B2C3D4E5F6G\"},\"arn\":\"arn:aws:s3:::example-terraform-registry-uploads\"},\"object\":{\"key\":\"modules/test/test/test/0.0.0/module.zip\",\"size\":12345,\"eTag\":\"abcdabcd012301230123abcdefabcdef\",\"sequencer\":\"A1B2C3D4E5F6G7H8I9\"}}}]}",
+      "attributes": {
+        "SenderId": "A1B2C3D4E5F6G7H8I9J0K",
+        "ApproximateFirstReceiveTimestamp": "1609459200000",
+        "ApproximateReceiveCount": "1",
+        "SentTimestamp": "1609459200000"
+      },
+      "messageAttributes": {},
+      "eventSource": "aws:sqs",
+      "eventSourceARN": "arn:aws:sqs:eu-west-1:123456789012:example-terraform-registry-uploads",
+      "awsRegion": "eu-west-1"
+    }
+  ]
+}
