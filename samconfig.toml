@@ -25,6 +25,14 @@ region = "eu-west-1"
 
 [prod.package.parameters]
 s3_bucket = "sam-terraform-registry"
+signing_profiles = [
+  "LambdaCreateModule=TerraformRegistryLambdaSigner_Ireland_2021",
+  "LambdaCreatePreSignedURL=TerraformRegistryLambdaSigner_Ireland_2021",
+  "LambdaModuleV1DownloadSpecifiedVersion=TerraformRegistryLambdaSigner_Ireland_2021",
+  "LambdaModuleV1ListAvailableVersions=TerraformRegistryLambdaSigner_Ireland_2021",
+  "LambdaModuleV1ListLatestSpecifiedProvider=TerraformRegistryLambdaSigner_Ireland_2021",
+  "LambdaServiceDiscovery=TerraformRegistryLambdaSigner_Ireland_2021"
+]
 output_template_file = "./build/latest.yaml"
 
 [prod.publish.parameters]
