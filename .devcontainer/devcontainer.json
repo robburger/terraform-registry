@@ -4,23 +4,26 @@
   "name": "Node.js & TypeScript",
   "build": {
     "dockerfile": "Dockerfile",
-    // Update 'VARIANT' to pick a Node version: 10, 12, 14
+    // Update 'VARIANT' to pick a Node version: 14, 16, 18
     "args": {
-      "VARIANT": "14",
-      "DOCKER_VERSION": "20.10.6"
+      "VARIANT": "18",
+      "DOCKER_VERSION": "24.0.7"
     }
   },
   "runArgs": ["--privileged"],
 
-  // Set *default* container specific settings.json values on container create.
-  "settings": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode",
-    "editor.formatOnSave": true,
-    "terminal.integrated.defaultProfile.linux": "zsh"
+  "customizations": {
+    "vscode": {
+      // Add the IDs of extensions you want installed when the container is created.
+      "extensions": ["esbenp.prettier-vscode", "microsoft.vscode-eslint", "timonwong.shellcheck"],
+      // Set *default* container specific settings.json values on container create.
+      "settings": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "terminal.integrated.defaultProfile.linux": "zsh"
+      }
+    }
   },
-
-  // Add the IDs of extensions you want installed when the container is created.
-  "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "timonwong.shellcheck"],
 
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
   "forwardPorts": [3000],
@@ -29,7 +32,7 @@
   "postCreateCommand": "yarn install",
 
   // Use 'postStartCommand' to run commands after the container is started.
-  "postStartCommand": "/dockerd-start.sh",
+  "postStartCommand": "sudo /dockerd-start.sh",
 
   // Comment out connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
   //"remoteUser": "node",

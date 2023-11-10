@@ -1,9 +1,9 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`serviceDiscovery handler should respond with a valid Terraform Service Discovery object 1`] = `
-Object {
-  "body": "{\\"modules.v1\\":\\"https://127.0.0.1:3000/modules/v1/\\",\\"providers.v1\\":\\"https://127.0.0.1:3000/providers/v1/\\"}",
-  "headers": Object {
+{
+  "body": "{"modules.v1":"https://127.0.0.1:3000/modules/v1/","providers.v1":"https://127.0.0.1:3000/providers/v1/"}",
+  "headers": {
     "content-type": "application/json",
   },
   "statusCode": 200,

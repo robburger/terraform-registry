@@ -1,5 +1,14 @@
 # terraform-registry
 
+## 0.2.0
+
+### Major Changes
+
+- Bump NodeJS from v14 to v18
+- Resolve DevContainer deprecations
+- Updates all packages to latest versions
+- Updates CI GitHub Action versions
+
 ## 0.1.1
 
 ### Patch Changes
