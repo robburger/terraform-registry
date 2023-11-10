@@ -35,6 +35,6 @@
     "typescript": "^5.2.2",
     "webpack": "^5.89.0",
     "webpack-cli": "^5.1.4",
-    "yaml-cfn": "^0.3.1"
+    "yaml-cfn": "^0.3.2"
   }
 }
